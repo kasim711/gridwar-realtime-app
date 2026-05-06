@@ -497,7 +497,9 @@
 <script>
 /* GridWar Client */
 
-const WS_URL = 'ws://localhost:8000/ws';   // ← change to your server
+const WS_URL = window.location.hostname.includes("localhost")
+  ? "ws://localhost:8000/ws"
+  : "wss://gridwar-realtime-app.onrender.com/ws";   // ← change to your server
 
 // State
 let ws = null;
