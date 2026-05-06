@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GridWar — Claim Your Territory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+   /* Reset & Vars  */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0a0a0f;
+    --surface:   #12121a;
+    --border:    #1e1e2e;
+    --text:      #e2e2f0;
+    --muted:     #5a5a7a;
+    --accent:    #7c3aed;
+    --accent2:   #06b6d4;
+    --danger:    #ef4444;
+    --cell-size: 24px;
+    --gap:       1px;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    overflow: hidden;
+  }
+
+  /* Layout */
+  #app {
+    display: grid;
+    grid-template-rows: 48px 1fr;
+    grid-template-columns: 1fr 240px;
+    height: 100vh;
+    gap: 0;
+  }
+
+  /* Topbar */
+  #topbar {
+    grid-column: 1 / -1;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 16px;
+    z-index: 10;
+  }
+
+  #logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 3px;
+    color: var(--accent2);
+    flex-shrink: 0;
+  }
+  #logo span { color: var(--accent); }
+
+  .topbar-sep { flex: 1; }
+
+  #status-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 100px;
+  }
+  #status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--danger);
+    transition: background .3s;
+  }
+  #status-dot.connected { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
+
+  #online-count { font-weight: 700; color: var(--text); }
+
+  #my-score-badge {
+    font-size: 11px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 100px;
+    display: flex; gap: 6px; align-items: center;
+  }
+  #my-color-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #444; flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,.15);
+    transition: background .3s;
+  }
+  #my-name-label { color: var(--muted); }
+  #my-score-num { font-weight: 700; }
+
+  #cooldown-bar-wrap {
+    width: 80px; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  #cooldown-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--accent2);
+    border-radius: 2px;
+    transition: width .05s linear;
+  }
+
+  /* Grid Canvas Area */
+  #grid-area {
+    position: relative;
+    overflow: hidden;
+    background: var(--bg);
+    cursor: crosshair;
+  }
+
+  /* pan cursor when dragging */
+  #grid-area.panning { cursor: grabbing; }
+
+  #grid-canvas {
+    position: absolute;
+    top: 0; left: 0;
+    transform-origin: 0 0;
+    image-rendering: pixelated;
+  }
+
+  /* Ripple effects rendered as DOM divs */
+  .ripple {
+    position: absolute;
+    pointer-events: none;
+    border-radius: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    animation: ripple-anim .5s ease-out forwards;
+    z-index: 5;
+  }
+  @keyframes ripple-anim {
+    to { transform: translate(-50%, -50%) scale(3); opacity: 0; }
+  }
+
+  /* Capture float label */
+  .float-label {
+    position: absolute;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    pointer-events: none;
+    white-space: nowrap;
+    animation: float-up .8s ease-out forwards;
+    z-index: 6;
+  }
+  @keyframes float-up {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(-30px); }
+  }
+
+  /* Tooltip */
+  #tooltip {
+    position: fixed;
+    background: #1a1a2e;
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    pointer-events: none;
+    z-index: 100;
+    display: none;
+    max-width: 160px;
+    line-height: 1.6;
+  }
+  #tooltip strong { display: block; }
+
+  /* Sidebar */
+  #sidebar {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .sidebar-block {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  /* Name input */
+  #name-row { display: flex; gap: 6px; }
+  #name-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    padding: 6px 8px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  #name-input:focus { border-color: var(--accent2); }
+  #name-btn {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: opacity .2s;
+  }
+  #name-btn:hover { opacity: .85; }
+
+  /* Stats grid */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .stat-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .stat-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .stat-value { font-size: 18px; font-weight: 700; font-family: 'Bebas Neue', sans-serif; color: var(--text); line-height: 1.2; }
+
+  /* Leaderboard */
+  #leaderboard-list { list-style: none; }
+  .lb-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    animation: lb-flash .4s ease-out;
+  }
+  @keyframes lb-flash {
+    from { background: rgba(124,58,237,.15); }
+    to   { background: transparent; }
+  }
+  .lb-rank { color: var(--muted); width: 16px; text-align: right; flex-shrink: 0; }
+  .lb-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(255,255,255,.1); }
+  .lb-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lb-score { font-weight: 700; color: var(--accent2); }
+
+  /* Activity feed */
+  #feed-list { list-style: none; max-height: 200px; overflow-y: auto; }
+  .feed-item {
+    font-size: 10px;
+    padding: 3px 0;
+    color: var(--muted);
+    border-bottom: 1px solid rgba(255,255,255,.03);
+    display: flex; gap: 5px; align-items: center;
+    animation: fadein .3s;
+  }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .feed-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .feed-txt { flex: 1; }
+  .feed-txt strong { color: var(--text); }
+
+  /* Zoom controls */
+  #zoom-controls {
+    display: flex;
+    gap: 6px;
+    padding: 14px 16px;
+    margin-top: auto;
+    border-top: 1px solid var(--border);
+  }
+  .zoom-btn {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 16px;
+    padding: 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .zoom-btn:hover { background: var(--border); }
+  #zoom-label {
+    flex: 0;
+    font-size: 10px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+  }
+
+  /* Onboarding overlay */
+  #onboard {
+    position: fixed; inset: 0;
+    background: rgba(10,10,15,.92);
+    backdrop-filter: blur(8px);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #onboard-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 36px 40px;
+    max-width: 380px;
+    width: 90%;
+    text-align: center;
+  }
+  #onboard h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 42px;
+    letter-spacing: 4px;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  #onboard h1 span { color: var(--accent); }
+  #onboard p {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.7;
+    margin-bottom: 24px;
+  }
+  #onboard-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    padding: 10px 14px;
+    outline: none;
+    margin-bottom: 12px;
+    text-align: center;
+    transition: border-color .2s;
+  }
+  #onboard-input:focus { border-color: var(--accent2); }
+  #onboard-btn {
+    width: 100%;
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: opacity .2s, transform .1s;
+  }
+  #onboard-btn:hover { opacity: .9; }
+  #onboard-btn:active { transform: scale(.98); }
+  #onboard-hint {
+    margin-top: 14px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .tag { display: inline-block; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; margin: 2px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- Onboarding -->
+<div id="onboard">
+  <div id="onboard-card">
+    <h1>GRID<span>WAR</span></h1>
+    <p>A real-time territory battle.<br>Click cells to claim them. Steal from others.<br>Own the most cells to top the leaderboard.</p>
+    <input id="onboard-input" maxlength="20" placeholder="Enter your name..." autocomplete="off" />
+    <button id="onboard-btn">ENTER THE GRID →</button>
+    <div id="onboard-hint">
+      <span class="tag"> Real-time</span>
+      <span class="tag"> Click to capture</span>
+      <span class="tag"> Leaderboard</span>
+    </div>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="app">
+
+  <!-- Topbar -->
+  <div id="topbar">
+    <div id="logo">GRID<span>WAR</span></div>
+
+    <div id="my-score-badge">
+      <div id="my-color-dot"></div>
+      <span id="my-name-label">—</span>
+      <span id="my-score-num">0 cells</span>
+    </div>
+
+    <div id="cooldown-bar-wrap" title="Capture cooldown">
+      <div id="cooldown-bar"></div>
+    </div>
+
+    <div class="topbar-sep"></div>
+
+    <div id="status-pill">
+      <div id="status-dot"></div>
+      <span id="online-count">0</span> online
+    </div>
+  </div>
+
+  <!-- Grid -->
+  <div id="grid-area">
+    <canvas id="grid-canvas"></canvas>
+  </div>
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+
+    <!-- Identity -->
+    <div class="sidebar-block">
+      <div class="sidebar-title">Identity</div>
+      <div id="name-row">
+        <input id="name-input" maxlength="20" placeholder="Your name..." />
+        <button id="name-btn">SET</button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="sidebar-block">
+      <div class="sidebar-title">Stats</div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">My Cells</div>
+          <div class="stat-value" id="stat-my">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Cells</div>
+          <div class="stat-value" id="stat-total">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Claimed</div>
+          <div class="stat-value" id="stat-claimed">0%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Online</div>
+          <div class="stat-value" id="stat-online">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="sidebar-block">
+      <div class="sidebar-title">Leaderboard</div>
+      <ul id="leaderboard-list"></ul>
+    </div>
+
+    <!-- Activity -->
+    <div class="sidebar-block" style="flex:1">
+      <div class="sidebar-title">Activity</div>
+      <ul id="feed-list"></ul>
+    </div>
+
+    <!-- Zoom -->
+    <div id="zoom-controls">
+      <button class="zoom-btn" id="zoom-out-btn">−</button>
+      <span id="zoom-label">100%</span>
+      <button class="zoom-btn" id="zoom-in-btn">+</button>
+      <button class="zoom-btn" id="zoom-reset-btn" title="Reset view">⌂</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- Tooltip -->
+<div id="tooltip"></div>
+
+<script>
+/* GridWar Client */
+
+const WS_URL = 'ws://localhost:8000/ws';   // ← change to your server
+
+// State
+let ws = null;
+let userId = null;
+let myColor = '#888';
+let myName  = 'Player';
+let myScore = 0;
+
+let COLS = 40, ROWS = 25, TOTAL = COLS * ROWS;
+let COOLDOWN = 1.5;
+
+// Sparse grid: cellId → { owner, color, name, ts }
+let grid = {};
+
+// Canvas / viewport
+let zoom   = 1;
+let panX   = 0;
+let panY   = 0;
+let CELL   = 22;  // cell size px (including gap)
+
+let canvas, ctx, gridArea;
+let isPanning = false, panStartX, panStartY, panOriginX, panOriginY;
+
+// Cooldown tracking
+let lastCapture = 0;
+let cdInterval  = null;
+
+// DOM refs 
+const onboard = document.getElementById('onboard');
+const onboardInput = document.getElementById('onboard-input');
+const onboardBtn = document.getElementById('onboard-btn');
+const statusDot = document.getElementById('status-dot');
+const onlineCount = document.getElementById('online-count');
+const myColorDot = document.getElementById('my-color-dot');
+const myNameLabel = document.getElementById('my-name-label');
+const myScoreNum = document.getElementById('my-score-num');
+const cooldownBar = document.getElementById('cooldown-bar');
+const nameInput = document.getElementById('name-input');
+const nameBtn = document.getElementById('name-btn');
+const lbList = document.getElementById('leaderboard-list');
+const feedList = document.getElementById('feed-list');
+const tooltip = document.getElementById('tooltip');
+const statMy = document.getElementById('stat-my');
+const statTotal = document.getElementById('stat-total');
+const statClaimed = document.getElementById('stat-claimed');
+const statOnline = document.getElementById('stat-online');
+const zoomLabel = document.getElementById('zoom-label');
+
+// Init 
+window.addEventListener('DOMContentLoaded', () => {
+  canvas   = document.getElementById('grid-canvas');
+  ctx      = canvas.getContext('2d');
+  gridArea = document.getElementById('grid-area');
+
+  setupCanvasEvents();
+  setupZoomControls();
+
+  onboardInput.focus();
+  onboardInput.addEventListener('keydown', e => { if (e.key === 'Enter') startGame(); });
+  onboardBtn.addEventListener('click', startGame);
+
+  nameBtn.addEventListener('click', updateName);
+  nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') updateName(); });
+
+  // Resize handler
+  window.addEventListener('resize', () => { resizeCanvas(); drawGrid(); });
+});
+
+function startGame() {
+  const name = onboardInput.value.trim() || ('Player' + Math.floor(Math.random()*999));
+  myName = name;
+  nameInput.value = name;
+  onboard.style.display = 'none';
+  connectWS(name);
+}
+
+// WebSocket 
+function connectWS(name) {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    statusDot.classList.add('connected');
+    // Register immediately
+    send({ type: 'register', name });
+  };
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    handleMessage(msg);
+  };
+
+  ws.onclose = () => {
+    statusDot.classList.remove('connected');
+    addFeed(null, '⚠ Disconnected — reconnecting…', '#ef4444');
+    setTimeout(() => connectWS(myName), 2000);
+  };
+
+  ws.onerror = () => ws.close();
+}
+
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+  }
+}
+
+function handleMessage(msg) {
+  switch (msg.type) {
+
+    case 'init':
+      userId   = msg.userId;
+      COLS     = msg.config.cols;
+      ROWS     = msg.config.rows;
+      TOTAL    = COLS * ROWS;
+      COOLDOWN = msg.config.cooldown;
+
+      // Populate grid from sparse snapshot
+      grid = {};
+      for (const [k, v] of Object.entries(msg.grid)) {
+        grid[parseInt(k)] = v;
+      }
+
+      statTotal.textContent = TOTAL;
+      updateOnline(msg.online);
+      updateLeaderboard(msg.leaderboard);
+      resizeCanvas();
+      centerGrid();
+      drawGrid();
+      addFeed(null, '🎮 Connected to GridWar!', '#22c55e');
+      break;
+
+    case 'registered':
+      userId  = msg.userId;
+      myColor = msg.color;
+      myName  = msg.name;
+      myColorDot.style.background = myColor;
+      myNameLabel.textContent = myName;
+      nameInput.value = myName;
+      break;
+
+    case 'capture': {
+      const cid  = msg.cellId;
+      const prev = grid[cid];
+      const isMe = msg.cell.owner === userId;
+
+      // Update grid
+      grid[cid] = msg.cell;
+
+      // Update my score
+      if (isMe) {
+        myScore = msg.leaderboard.find(u => u.name === myName)?.score || myScore;
+        updateMyScore();
+      }
+
+      // Redraw just this cell
+      drawCell(cid);
+
+      // Ripple + label
+      spawnRipple(cid, msg.cell.color);
+      if (!isMe) {
+        spawnFloatLabel(cid, msg.cell.name, msg.cell.color);
+      }
+
+      // Leaderboard + stats
+      updateLeaderboard(msg.leaderboard);
+      updateOnline(msg.online);
+      updateStats();
+
+      // Feed
+      const prevName = prev?.name;
+      if (prevName && prevName !== msg.cell.name) {
+        addFeed(msg.cell.color, `<strong>${msg.cell.name}</strong> stole from ${prevName}`, msg.cell.color);
+      } else if (!prevName) {
+        addFeed(msg.cell.color, `<strong>${msg.cell.name}</strong> claimed a cell`, msg.cell.color);
+      }
+      break;
+    }
+
+    case 'cooldown':
+      triggerCooldownUI(msg.remaining);
+      break;
+
+    case 'presence':
+      updateOnline(msg.online);
+      break;
+  }
+}
+
+// Canvas Drawing 
+function resizeCanvas() {
+  const w = gridArea.clientWidth;
+  const h = gridArea.clientHeight;
+  canvas.width  = w;
+  canvas.height = h;
+}
+
+function centerGrid() {
+  const gw = COLS * CELL;
+  const gh = ROWS * CELL;
+  const w  = gridArea.clientWidth;
+  const h  = gridArea.clientHeight;
+  panX = (w - gw * zoom) / 2;
+  panY = (h - gh * zoom) / 2;
+  applyTransform();
+}
+
+function applyTransform() {
+  canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+  zoomLabel.textContent = Math.round(zoom * 100) + '%';
+}
+
+function drawGrid() {
+  if (!ctx) return;
+  const w = COLS * CELL;
+  const h = ROWS * CELL;
+  canvas.width  = w;
+  canvas.height = h;
+  ctx.clearRect(0, 0, w, h);
+
+  for (let i = 0; i < TOTAL; i++) drawCell(i, false);
+}
+
+function drawCell(cid, flush = true) {
+  const col = cid % COLS;
+  const row = Math.floor(cid / COLS);
+  const x = col * CELL;
+  const y = row * CELL;
+  const S = CELL - 1;  // cell size minus gap
+
+  const cell = grid[cid];
+
+  if (cell) {
+    // Claimed cell
+    ctx.fillStyle = cell.color;
+    ctx.fillRect(x, y, S, S);
+
+    // Subtle inner shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(x, y + S - 2, S, 2);
+    ctx.fillRect(x + S - 2, y, 2, S);
+
+    // Initials overlay
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = `bold ${Math.floor(S * 0.38)}px "Space Mono", monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const initials = (cell.name || '?').slice(0, 2).toUpperCase();
+    ctx.fillText(initials, x + S / 2, y + S / 2);
+
+  } else {
+    // Empty cell
+    ctx.fillStyle = '#12121a';
+    ctx.fillRect(x, y, S, S);
+    ctx.strokeStyle = '#1e1e2e';
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(x + 0.5, y + 0.5, S - 1, S - 1);
+  }
+}
+
+// Interaction 
+function setupCanvasEvents() {
+  gridArea.addEventListener('click', onGridClick);
+  gridArea.addEventListener('mousemove', onMouseMove);
+  gridArea.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+  // Pan
+  gridArea.addEventListener('mousedown', e => {
+    if (e.button !== 1 && !e.altKey) return;
+    isPanning = true;
+    panStartX = e.clientX; panStartY = e.clientY;
+    panOriginX = panX; panOriginY = panY;
+    gridArea.classList.add('panning');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => {
+    if (!isPanning) return;
+    panX = panOriginX + (e.clientX - panStartX);
+    panY = panOriginY + (e.clientY - panStartY);
+    applyTransform();
+  });
+  window.addEventListener('mouseup', () => {
+    if (isPanning) { isPanning = false; gridArea.classList.remove('panning'); }
+  });
+
+  // Scroll to zoom
+  gridArea.addEventListener('wheel', e => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const rect  = gridArea.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    panX = mx - (mx - panX) * delta;
+    panY = my - (my - panY) * delta;
+    zoom = Math.max(0.3, Math.min(4, zoom * delta));
+    applyTransform();
+  }, { passive: false });
+}
+
+function onGridClick(e) {
+  if (isPanning) return;
+  if (!userId) return;
+
+  const cid = getCellAtEvent(e);
+  if (cid === null) return;
+
+  // Optimistic check: same owner
+  if (grid[cid]?.owner === userId) return;
+
+  // Cooldown client-side gate
+  const now = Date.now() / 1000;
+  if (now - lastCapture < COOLDOWN - 0.05) return;
+
+  send({ type: 'capture', cellId: cid });
+  lastCapture = now;
+  startCooldownBar();
+
+  // Optimistic UI
+  const prevCell = grid[cid];
+  grid[cid] = { owner: userId, color: myColor, name: myName, ts: now };
+  drawCell(cid);
+  spawnRipple(cid, myColor);
+  myScore++;
+  updateMyScore();
+}
+
+function onMouseMove(e) {
+  const cid = getCellAtEvent(e);
+  if (cid === null) { tooltip.style.display = 'none'; return; }
+
+  const cell = grid[cid];
+  if (!cell) { tooltip.style.display = 'none'; return; }
+
+  tooltip.style.display  = 'block';
+  tooltip.style.left     = (e.clientX + 14) + 'px';
+  tooltip.style.top      = (e.clientY - 8) + 'px';
+  tooltip.innerHTML = `
+    <strong style="color:${cell.color}">${cell.name}</strong>
+    Cell #${cid}<br>
+    <span style="color:var(--muted);font-size:9px">${new Date(cell.ts * 1000).toLocaleTimeString()}</span>
+  `;
+}
+
+function getCellAtEvent(e) {
+  const rect = gridArea.getBoundingClientRect();
+  const mx   = (e.clientX - rect.left - panX) / zoom;
+  const my   = (e.clientY - rect.top  - panY) / zoom;
+  const col  = Math.floor(mx / CELL);
+  const row  = Math.floor(my / CELL);
+  if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return null;
+  return row * COLS + col;
+}
+
+// Ripple + Float 
+function cellCenter(cid) {
+  const col = cid % COLS;
+  const row = Math.floor(cid / COLS);
+  // Canvas-space center → screen space
+  const cx = col * CELL + CELL / 2;
+  const cy = row * CELL + CELL / 2;
+  // Apply zoom + pan
+  const rect = gridArea.getBoundingClientRect();
+  return {
+    x: rect.left + panX + cx * zoom,
+    y: rect.top  + panY + cy * zoom,
+  };
+}
+
+function spawnRipple(cid, color) {
+  const { x, y } = cellCenter(cid);
+  const el = document.createElement('div');
+  el.className = 'ripple';
+  el.style.cssText = `
+    left:${x}px; top:${y}px;
+    width:${CELL * zoom * 2}px; height:${CELL * zoom * 2}px;
+    background:${color}55;
+    border:2px solid ${color};
+  `;
+  document.body.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
+function spawnFloatLabel(cid, name, color) {
+  const { x, y } = cellCenter(cid);
+  const el = document.createElement('div');
+  el.className = 'float-label';
+  el.style.cssText = `left:${x}px; top:${y - 10}px; color:${color};`;
+  el.textContent = name;
+  document.body.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
+// Cooldown UI 
+function startCooldownBar() {
+  if (cdInterval) clearInterval(cdInterval);
+  const start = Date.now();
+  const dur   = COOLDOWN * 1000;
+  cooldownBar.style.width = '100%';
+  cdInterval = setInterval(() => {
+    const elapsed = Date.now() - start;
+    const pct = Math.max(0, 100 - (elapsed / dur) * 100);
+    cooldownBar.style.width = pct + '%';
+    if (pct === 0) { clearInterval(cdInterval); cdInterval = null; }
+  }, 30);
+}
+
+function triggerCooldownUI(remaining) {
+  // Server said no — just flash bar
+  cooldownBar.style.background = '#ef4444';
+  setTimeout(() => { cooldownBar.style.background = 'var(--accent2)'; }, 300);
+}
+
+// UI Updates 
+function updateMyScore() {
+  myScoreNum.textContent = myScore + ' cell' + (myScore !== 1 ? 's' : '');
+  statMy.textContent = myScore;
+}
+
+function updateOnline(n) {
+  onlineCount.textContent = n;
+  statOnline.textContent  = n;
+}
+
+function updateStats() {
+  const claimed = Object.values(grid).filter(Boolean).length;
+  const pct     = TOTAL ? Math.round((claimed / TOTAL) * 100) : 0;
+  statClaimed.textContent = pct + '%';
+}
+
+function updateLeaderboard(list) {
+  lbList.innerHTML = '';
+  list.forEach((u, i) => {
+    const li = document.createElement('li');
+    li.className = 'lb-item';
+    li.innerHTML = `
+      <span class="lb-rank">${i + 1}</span>
+      <span class="lb-dot" style="background:${u.color}"></span>
+      <span class="lb-name">${u.name}</span>
+      <span class="lb-score">${u.score}</span>
+    `;
+    lbList.appendChild(li);
+  });
+
+  // Also update my score from leaderboard
+  const me = list.find(u => u.name === myName);
+  if (me) {
+    myScore = me.score;
+    updateMyScore();
+    myColorDot.style.background = myColor;
+    myNameLabel.textContent = myName;
+  }
+}
+
+const MAX_FEED = 30;
+function addFeed(color, html, dotColor) {
+  const li = document.createElement('li');
+  li.className = 'feed-item';
+  li.innerHTML = `
+    <span class="feed-dot" style="background:${dotColor || '#444'}"></span>
+    <span class="feed-txt">${html}</span>
+  `;
+  feedList.prepend(li);
+  while (feedList.children.length > MAX_FEED) feedList.lastChild.remove();
+}
+
+// Name change
+function updateName() {
+  const n = nameInput.value.trim();
+  if (!n) return;
+  myName = n;
+  send({ type: 'register', name: n });
+}
+
+// Zoom controls 
+function setupZoomControls() {
+  document.getElementById('zoom-in-btn').addEventListener('click', () => {
+    zoom = Math.min(4, zoom * 1.2);
+    applyTransform();
+  });
+  document.getElementById('zoom-out-btn').addEventListener('click', () => {
+    zoom = Math.max(0.3, zoom / 1.2);
+    applyTransform();
+  });
+  document.getElementById('zoom-reset-btn').addEventListener('click', () => {
+    zoom = 1;
+    centerGrid();
+  });
+}
+</script>
+</body>
+</html>
